@@ -24,6 +24,7 @@ export async function POST(req: Request) {
 
     const menuRaw = String(formData.get("menu") ?? "education");
     const menu: MenuId = isMenuId(menuRaw) ? menuRaw : "education";
+    const includeImages = String(formData.get("includeImages") ?? "true") !== "false";
 
     const sectionsRaw = formData.get("sections");
     if (!sectionsRaw || typeof sectionsRaw !== "string") {
@@ -52,11 +53,15 @@ export async function POST(req: Request) {
       });
 
       let imageUrls: string[] = [];
-      try {
-        imageUrls = await generatePanelImages(panels, { timeoutMs: 7000 });
-      } catch (e) {
-        // 이미지가 실패해도 캡션/장면 데이터는 보존하고, 화면은 폴백 SVG로 유지합니다.
-        imageUrls = panels.map((_, i) => svgDataUriForPanel(i));
+      if (includeImages) {
+        try {
+          imageUrls = await generatePanelImages(panels, { timeoutMs: 7000 });
+        } catch {
+          // 이미지가 실패해도 캡션/장면 데이터는 보존하고, 화면은 폴백 SVG로 유지합니다.
+          imageUrls = panels.map((_, i) => svgDataUriForPanel(i));
+        }
+      } else {
+        imageUrls = panels.map(() => "");
       }
 
       const finalPanels = panels.map((p, i) => ({

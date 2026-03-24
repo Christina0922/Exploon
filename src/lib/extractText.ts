@@ -4,6 +4,18 @@ function normalizeText(input: string) {
   return input.replace(/\r/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function extractTextFromUploadedFile(file: File): Promise<string> {
   const name = file.name || "document";
   const buffer = Buffer.from(await file.arrayBuffer());
@@ -14,8 +26,16 @@ export async function extractTextFromUploadedFile(file: File): Promise<string> {
   if (isPdf) {
     const parser = new PDFParse({ data: buffer });
     try {
-      const textResult = await parser.getText();
-      const text = String((textResult as any)?.text ?? "");
+      const textResult = await withTimeout(
+        parser.getText(),
+        12000,
+        "PDF 텍스트 추출 시간이 초과되었습니다. 용량이 더 작은 PDF나 텍스트 입력을 사용해 주세요.",
+      );
+      const record = textResult as { text?: string };
+      const text = String(record.text ?? "");
+      if (!text.trim()) {
+        throw new Error("PDF에서 추출된 텍스트가 없습니다. 스캔본 PDF일 수 있습니다.");
+      }
       return normalizeText(text);
     } finally {
       // 메모리/리소스 누수 방지
